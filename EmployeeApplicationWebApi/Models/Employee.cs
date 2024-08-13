@@ -1,6 +1,6 @@
 ﻿namespace EmployeeApplicationWebApi.Models;
 
-public class Employee
+public record Employee
 {
     public Guid Id { get; init; }
     public string? Name { get; init; }
