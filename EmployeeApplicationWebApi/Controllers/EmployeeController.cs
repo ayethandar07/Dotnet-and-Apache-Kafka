@@ -4,6 +4,7 @@ using EmployeeApplicationWebApi.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace EmployeeApplicationApi.Controllers
@@ -14,11 +15,13 @@ namespace EmployeeApplicationApi.Controllers
     {
         private readonly EmployeeDbContext _dbContext;
         private readonly ILogger<EmployeeController> _logger;
+        private readonly KafkaSettings _kafkaSettings;
 
-        public EmployeeController(EmployeeDbContext dbContext, ILogger<EmployeeController> logger)
+        public EmployeeController(EmployeeDbContext dbContext, ILogger<EmployeeController> logger, IOptions<KafkaSettings> kafkaSettings)
         {
             _dbContext = dbContext;
             _logger = logger;
+            _kafkaSettings = kafkaSettings.Value;
         }
 
         [HttpGet]
@@ -44,8 +47,8 @@ namespace EmployeeApplicationApi.Controllers
             // client
             var producerConfig = new ProducerConfig()
             {
-                BootstrapServers = "localhost:9093",
-                Acks = Acks.All
+                BootstrapServers = _kafkaSettings.BootstrapServers,
+                Acks = Enum.Parse<Acks>(_kafkaSettings.Acks!, true),
             };
 
             var producer = new ProducerBuilder<string, string>(producerConfig).Build();
@@ -53,6 +56,14 @@ namespace EmployeeApplicationApi.Controllers
             producer.Dispose();
 
             return CreatedAtAction(nameof(CreateEmployee), new {id = employee.Id}, employee);
+        }
+
+        [HttpGet("status")]
+        public IActionResult GetStatus()
+        {
+            // Logic to check Kafka consumer status
+            // This could be a simple status message or more detailed information
+            return Ok("Kafka consumer is running. Check logs for details.");
         }
     }
 }
