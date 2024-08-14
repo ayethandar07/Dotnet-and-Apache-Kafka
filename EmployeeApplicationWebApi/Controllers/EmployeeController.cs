@@ -57,13 +57,5 @@ namespace EmployeeApplicationApi.Controllers
 
             return CreatedAtAction(nameof(CreateEmployee), new {id = employee.Id}, employee);
         }
-
-        [HttpGet("status")]
-        public IActionResult GetStatus()
-        {
-            // Logic to check Kafka consumer status
-            // This could be a simple status message or more detailed information
-            return Ok("Kafka consumer is running. Check logs for details.");
-        }
     }
 }
