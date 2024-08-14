@@ -60,7 +60,7 @@ public class Worker : BackgroundService
                                     using (var scope = _serviceProvider.CreateScope())
                                     {
                                         var dbContext = scope.ServiceProvider.GetRequiredService<EmployeeReportDbContext>();
-                                        var employeeReport = new EmployeeReport(Guid.NewGuid(), employee.Id, employee.Name, employee.Surname);
+                                        var employeeReport = new EmployeeReport(Guid.NewGuid(), employee.Id, employee.Name, employee.Surname!);
                                         dbContext.Reports.Add(employeeReport);
                                         await dbContext.SaveChangesAsync(stoppingToken);
                                     }
