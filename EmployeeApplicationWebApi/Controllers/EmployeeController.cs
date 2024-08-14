@@ -1,6 +1,7 @@
 ﻿using Confluent.Kafka;
 using EmployeeApplicationWebApi.Database;
 using EmployeeApplicationWebApi.Models;
+using EmployeeApplicationWebApi.Services.Producer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,13 +16,13 @@ namespace EmployeeApplicationApi.Controllers
     {
         private readonly EmployeeDbContext _dbContext;
         private readonly ILogger<EmployeeController> _logger;
-        private readonly KafkaSettings _kafkaSettings;
+        private readonly KafkaProducerService _producerService;
 
-        public EmployeeController(EmployeeDbContext dbContext, ILogger<EmployeeController> logger, IOptions<KafkaSettings> kafkaSettings)
+        public EmployeeController(EmployeeDbContext dbContext, ILogger<EmployeeController> logger, KafkaProducerService producerService)
         {
             _dbContext = dbContext;
             _logger = logger;
-            _kafkaSettings = kafkaSettings.Value;
+            _producerService = producerService;
         }
 
         [HttpGet]
@@ -38,24 +39,10 @@ namespace EmployeeApplicationApi.Controllers
             _dbContext.Employees.Add(employee);
             await _dbContext.SaveChangesAsync();
 
-            var message = new Message<string, string>()
-            {
-                Key = employee.Id.ToString(),
-                Value = JsonSerializer.Serialize(employee)
-            };
+            await _producerService.ProduceAsync(employee.Id.ToString(), employee);
 
-            // client
-            var producerConfig = new ProducerConfig()
-            {
-                BootstrapServers = _kafkaSettings.BootstrapServers,
-                Acks = Enum.Parse<Acks>(_kafkaSettings.Acks!, true),
-            };
+            return CreatedAtAction(nameof(CreateEmployee), new { id = employee.Id }, employee);
 
-            var producer = new ProducerBuilder<string, string>(producerConfig).Build();
-            await producer.ProduceAsync("employeeTopic", message);
-            producer.Dispose();
-
-            return CreatedAtAction(nameof(CreateEmployee), new {id = employee.Id}, employee);
         }
     }
 }
