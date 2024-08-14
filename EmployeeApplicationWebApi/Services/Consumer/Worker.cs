@@ -27,95 +27,93 @@ public class Worker : BackgroundService
 
     private async void StartConsumerLoop(CancellationToken stoppingToken)
     {
-        var consumerConfig = new ConsumerConfig
+        var consumerConfig = CreateConsumerConfig();
+
+        using var consumer = new ConsumerBuilder<string, string>(consumerConfig).Build();
+        consumer.Subscribe(_kafkaSettings.Topic);
+
+        try
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await ProcessMessagesAsync(consumer, stoppingToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Worker stopping due to cancellation request.");
+        }
+        finally
+        {
+            consumer.Close();
+        }
+    }
+
+    private ConsumerConfig CreateConsumerConfig()
+    {
+        return new ConsumerConfig
         {
             BootstrapServers = _kafkaSettings.BootstrapServers,
             GroupId = _kafkaSettings.GroupId,
             AutoOffsetReset = _kafkaSettings.AutoOffsetReset,
             EnableAutoCommit = _kafkaSettings.EnableAutoCommit
         };
+    }
 
-        using (var consumer = new ConsumerBuilder<string, string>(consumerConfig).Build())
+    private async Task ProcessMessagesAsync(IConsumer<string, string> consumer, CancellationToken stoppingToken)
+    {
+        try
         {
-            consumer.Subscribe(_kafkaSettings.Topic);
+            var consumeResult = consumer.Consume(stoppingToken);
+            if (consumeResult == null) return;
 
-            try
+            var employees = DeserializeMessage(consumeResult.Message.Value);
+            if (employees != null)
             {
-                while (!stoppingToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        var consumeResult = consumer.Consume(stoppingToken);
-
-                        if (consumeResult != null)
-                        {
-                            List<Employee>? employees = null;
-                            Employee? employee = null;
-
-                            using (JsonDocument doc = JsonDocument.Parse(consumeResult.Message.Value))
-                            {
-                                var rootElement = doc.RootElement;
-
-                                if (rootElement.ValueKind == JsonValueKind.Array)
-                                {
-                                    // JSON is an array, deserialize to List<Employee>
-                                    employees = JsonSerializer.Deserialize<List<Employee>>(consumeResult.Message.Value);
-                                    _logger.LogInformation("Consumed employees count: {Count}", employees?.Count);
-                                }
-                                else if (rootElement.ValueKind == JsonValueKind.Object)
-                                {
-                                    // JSON is a single object, deserialize to Employee
-                                    employee = JsonSerializer.Deserialize<Employee>(consumeResult.Message.Value);
-                                    _logger.LogInformation("Consumed single employee: {employee}", employee);
-                                    employees = employee != null ? new List<Employee> { employee } : null;
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Message is neither an array nor an object.");
-                                    continue; // Skip processing if the JSON structure is unexpected
-                                }
-                            }
-
-                            if (employees != null)
-                            {
-                                await Task.Run(async () =>
-                                {
-                                    using (var scope = _serviceProvider.CreateScope())
-                                    {
-                                        var dbContext = scope.ServiceProvider.GetRequiredService<EmployeeReportDbContext>();
-
-                                        foreach (var emp in employees)
-                                        {
-                                            var employeeReport = new EmployeeReport(Guid.NewGuid(), emp.Id, emp.Name, emp.Surname!);
-                                            dbContext.Reports.Add(employeeReport);
-                                        }
-
-                                        await dbContext.SaveChangesAsync(stoppingToken);
-                                    }
-
-                                    consumer.Commit(consumeResult);
-                                }, stoppingToken);
-                            }
-                        }
-                    }
-                    catch (ConsumeException ex)
-                    {
-                        _logger.LogError("Consume error: {Error}", ex.Error.Reason);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError("Unexpected error: {Error}", ex.Message);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogInformation("Worker stopping due to cancellation request.");
-            }
-            finally
-            {
-                consumer.Close();
+                await SaveEmployeesAsync(employees, stoppingToken);
+                consumer.Commit(consumeResult);
             }
         }
+        catch (ConsumeException ex)
+        {
+            _logger.LogError("Consume error: {Error}", ex.Error.Reason);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Unexpected error: {Error}", ex.Message);
+        }
+    }
+
+    private List<Employee>? DeserializeMessage(string message)
+    {
+        using var doc = JsonDocument.Parse(message);
+        var rootElement = doc.RootElement;
+
+        if (rootElement.ValueKind == JsonValueKind.Array)
+        {
+            return JsonSerializer.Deserialize<List<Employee>>(message);
+        }
+        else if (rootElement.ValueKind == JsonValueKind.Object)
+        {
+            var employee = JsonSerializer.Deserialize<Employee>(message);
+            return employee != null ? new List<Employee> { employee } : null;
+        }
+
+        _logger.LogWarning("Message is neither an array nor an object.");
+        return null;
+    }
+
+    private async Task SaveEmployeesAsync(List<Employee> employees, CancellationToken stoppingToken)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<EmployeeReportDbContext>();
+
+        foreach (var emp in employees)
+        {
+            var employeeReport = new EmployeeReport(Guid.NewGuid(), emp.Id, emp.Name, emp.Surname!);
+            dbContext.Reports.Add(employeeReport);
+        }
+
+        await dbContext.SaveChangesAsync(stoppingToken);
     }
 }
