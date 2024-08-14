@@ -22,10 +22,11 @@ public class Worker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Consume asynchronously
         await Task.Run(() => StartConsumerLoop(stoppingToken), stoppingToken);
     }
 
-    private void StartConsumerLoop(CancellationToken stoppingToken)
+    private async void StartConsumerLoop(CancellationToken stoppingToken)
     {
         var consumerConfig = new ConsumerConfig
         {
@@ -54,8 +55,7 @@ public class Worker : BackgroundService
                             {
                                 _logger.LogInformation("Consumed employee: {employee}", employee);
 
-                                // Run database operations asynchronously
-                                Task.Run(async () =>
+                                await Task.Run(async () =>
                                 {
                                     using (var scope = _serviceProvider.CreateScope())
                                     {
@@ -66,7 +66,7 @@ public class Worker : BackgroundService
                                     }
 
                                     consumer.Commit(consumeResult);
-                                }, stoppingToken).Wait();
+                                }, stoppingToken);
                             }
                         }
                     }
