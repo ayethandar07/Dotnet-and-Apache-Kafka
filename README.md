@@ -56,8 +56,8 @@
 
 <h3> Additional Information</h3>
 <ul>
-  <li>Kafka Documentation: Kafka Documentation</li>
-  <li>ASP.NET Core Documentation: ASP.NET Core Documentation</li>
+  <li>Kafka Documentation: <a href="https://kafka.apache.org/documentation/">Kafka Documentation</a></li>
+  <li>ASP.NET Core Documentation: <a href="https://learn.microsoft.com/en-us/aspnet/core/?view=aspnetcore-8.0"> ASP.NET Core Documentation </a></li>
 </ul>
 
 <h3> Contact </h3>
